@@ -1,0 +1,9 @@
+[window]
+dimensions = { columns = 150, lines = 40 }
+opacity = 0.85
+blur = true
+decorations = "Full"
+
+[font]
+normal = { family = "JetBrainsMono Nerd Font", style = "Medium" }
+size = 12
