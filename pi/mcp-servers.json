@@ -1,0 +1,17 @@
+{
+  "$comment": "MCP servers bridged into pi by extensions/mcp-bridge.ts. Each server is spawned over stdio and its tools are registered as pi tools named '<toolPrefix>_<mcp-tool-name>'. Add new servers here; see PI-CONFIGURATION.md.",
+  "servers": {
+    "hound": {
+      "command": ["hound"],
+      "enabled": true,
+      "toolPrefix": "hound",
+      "description": "Keyless web search / fetch / crawl / screenshot (Hound)"
+    },
+    "open-design": {
+      "command": ["node", "/home/vpardos/open-design/apps/daemon/bin/od.mjs", "mcp", "--daemon-url", "http://127.0.0.1:7456"],
+      "enabled": true,
+      "toolPrefix": "opendesign",
+      "description": "Open Design daemon: projects, artifacts, files, design runs"
+    }
+  }
+}

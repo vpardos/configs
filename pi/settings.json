@@ -1,0 +1,10 @@
+{
+  "lastChangelogVersion": "0.85.1",
+  "theme": "dark",
+  "packages": [
+    "npm:pi-ollama-cloud"
+  ],
+  "skills": [
+    "/home/vpardos/open-design/skills"
+  ]
+}

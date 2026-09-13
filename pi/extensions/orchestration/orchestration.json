@@ -1,0 +1,112 @@
+{
+  "$comment": "Orchestration system config (migrated from oh-my-opencode-slim + opencode mathematician agent). Edit this file to add/remove agents or change models. See PI-CONFIGURATION.md.",
+  "defaultMode": "orchestrator",
+  "modes": {
+    "orchestrator": {
+      "label": "Orchestrator (general coding workflow, oh-my-opencode-slim style)",
+      "systemPrompt": "prompts/orchestrator.md",
+      "agents": ["oracle", "librarian", "explorer", "designer", "fixer", "observer"],
+      "model": "ollama-cloud/glm-5.3",
+      "thinking": "high"
+    },
+    "mathematician": {
+      "label": "Mathematician (math orchestration: observer-math -> solver -> writer)",
+      "systemPrompt": "prompts/mathematician.md",
+      "agents": ["observer-math", "solver", "writer"],
+      "model": "ollama-cloud/glm-5.3-flash",
+      "thinking": "max"
+    }
+  },
+  "agents": {
+    "oracle": {
+      "description": "Strategic technical advisor and code reviewer. High-IQ debugging, architecture decisions, code review, simplification. READ-ONLY.",
+      "model": "ollama-cloud/glm-5.3",
+      "thinking": "max",
+      "systemPrompt": "prompts/oracle.md",
+      "tools": ["read", "bash", "grep", "find", "ls"],
+      "toolMode": "allow",
+      "skills": ["simplify"],
+      "timeoutMs": 900000
+    },
+    "librarian": {
+      "description": "Research specialist for codebases and documentation. Web search, official docs, external repos.",
+      "model": "ollama-cloud/deepseek-v4-flash:0731",
+      "thinking": "high",
+      "systemPrompt": "prompts/librarian.md",
+      "tools": ["edit", "write", "question"],
+      "toolMode": "exclude",
+      "skills": [],
+      "timeoutMs": 900000
+    },
+    "explorer": {
+      "description": "Fast codebase navigation specialist. Answers 'Where is X?', 'Find Y', 'Which file has Z'. READ-ONLY.",
+      "model": "ollama-cloud/nemotron-3-nano:30b",
+      "thinking": "max",
+      "systemPrompt": "prompts/explorer.md",
+      "tools": ["read", "grep", "find", "ls"],
+      "toolMode": "allow",
+      "skills": [],
+      "timeoutMs": 600000
+    },
+    "designer": {
+      "description": "Frontend UI/UX specialist. Creates and reviews intentional, polished experiences. Always route UI/design work here.",
+      "model": "ollama-cloud/glm-5.3-flash",
+      "thinking": "max",
+      "systemPrompt": "prompts/designer.md",
+      "tools": ["read", "edit", "write", "bash", "grep", "find", "ls"],
+      "toolMode": "allow",
+      "skills": [],
+      "timeoutMs": 1200000
+    },
+    "fixer": {
+      "description": "Fast, focused implementation specialist. Executes complete task specs; no research, no design.",
+      "model": "ollama-cloud/deepseek-v4-flash:0731",
+      "thinking": "max",
+      "systemPrompt": "prompts/fixer.md",
+      "tools": ["read", "edit", "write", "bash", "grep", "find", "ls"],
+      "toolMode": "allow",
+      "skills": [],
+      "timeoutMs": 1200000
+    },
+    "observer": {
+      "description": "Visual analysis specialist. Interprets images, screenshots, PDFs and diagrams; extracts structured observations.",
+      "model": "ollama-cloud/minimax-m3",
+      "thinking": "max",
+      "systemPrompt": "prompts/observer.md",
+      "tools": ["read", "bash", "grep", "find", "ls"],
+      "toolMode": "allow",
+      "skills": [],
+      "timeoutMs": 900000
+    },
+    "observer-math": {
+      "description": "Vision specialist for math PDFs. Converts PDFs to images via pdf2img and extracts every math expression in LaTeX with all symbols preserved.",
+      "model": "ollama-cloud/minimax-m3",
+      "thinking": "max",
+      "systemPrompt": "prompts/observer-math.md",
+      "tools": ["edit", "question"],
+      "toolMode": "exclude",
+      "skills": ["pdf2img"],
+      "timeoutMs": 1200000
+    },
+    "solver": {
+      "description": "Math problem solver. Applies math-olympiad's adversarial verify cycle for proofs and math-reasoning's derivation templates. Optimised for correctness, not elegance.",
+      "model": "ollama-cloud/glm-5.3",
+      "thinking": "max",
+      "systemPrompt": "prompts/solver.md",
+      "tools": ["edit", "question"],
+      "toolMode": "exclude",
+      "skills": ["math-olympiad", "math-reasoning"],
+      "timeoutMs": 1800000
+    },
+    "writer": {
+      "description": "Math writer. Typst + LaTeX specialist. Renders the verified solution into a clean document and compiles to PDF if a toolchain is available.",
+      "model": "ollama-cloud/glm-5.3-flash",
+      "thinking": "max",
+      "systemPrompt": "prompts/writer.md",
+      "tools": ["question"],
+      "toolMode": "exclude",
+      "skills": ["typst", "math-reasoning", "math-olympiad"],
+      "timeoutMs": 1800000
+    }
+  }
+}
