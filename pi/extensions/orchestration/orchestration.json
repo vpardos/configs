@@ -26,7 +26,7 @@
       "tools": ["read", "bash", "grep", "find", "ls"],
       "toolMode": "allow",
       "skills": ["simplify"],
-      "timeoutMs": 900000
+      "timeoutMs": 480000
     },
     "librarian": {
       "description": "Research specialist for codebases and documentation. Web search, official docs, external repos.",
@@ -36,7 +36,7 @@
       "tools": ["edit", "write", "question"],
       "toolMode": "exclude",
       "skills": [],
-      "timeoutMs": 900000
+      "timeoutMs": 480000
     },
     "explorer": {
       "description": "Fast codebase navigation specialist. Answers 'Where is X?', 'Find Y', 'Which file has Z'. READ-ONLY.",
@@ -46,7 +46,7 @@
       "tools": ["read", "grep", "find", "ls"],
       "toolMode": "allow",
       "skills": [],
-      "timeoutMs": 600000
+      "timeoutMs": 300000
     },
     "designer": {
       "description": "Frontend UI/UX specialist. Creates and reviews intentional, polished experiences. Always route UI/design work here.",
@@ -56,7 +56,7 @@
       "tools": ["read", "edit", "write", "bash", "grep", "find", "ls"],
       "toolMode": "allow",
       "skills": [],
-      "timeoutMs": 1200000
+      "timeoutMs": 900000
     },
     "fixer": {
       "description": "Fast, focused implementation specialist. Executes complete task specs; no research, no design.",
@@ -66,7 +66,7 @@
       "tools": ["read", "edit", "write", "bash", "grep", "find", "ls"],
       "toolMode": "allow",
       "skills": [],
-      "timeoutMs": 1200000
+      "timeoutMs": 600000
     },
     "observer": {
       "description": "Visual analysis specialist. Interprets images, screenshots, PDFs and diagrams; extracts structured observations.",
@@ -76,7 +76,7 @@
       "tools": ["read", "bash", "grep", "find", "ls"],
       "toolMode": "allow",
       "skills": [],
-      "timeoutMs": 900000
+      "timeoutMs": 300000
     },
     "observer-math": {
       "description": "Vision specialist for math PDFs. Converts PDFs to images via pdf2img and extracts every math expression in LaTeX with all symbols preserved.",
@@ -86,7 +86,7 @@
       "tools": ["edit", "question"],
       "toolMode": "exclude",
       "skills": ["pdf2img"],
-      "timeoutMs": 1200000
+      "timeoutMs": 600000
     },
     "solver": {
       "description": "Math problem solver. Applies math-olympiad's adversarial verify cycle for proofs and math-reasoning's derivation templates. Optimised for correctness, not elegance.",
@@ -96,7 +96,7 @@
       "tools": ["edit", "question"],
       "toolMode": "exclude",
       "skills": ["math-olympiad", "math-reasoning"],
-      "timeoutMs": 1800000
+      "timeoutMs": 1200000
     },
     "writer": {
       "description": "Math writer. Typst + LaTeX specialist. Renders the verified solution into a clean document and compiles to PDF if a toolchain is available.",
@@ -106,7 +106,7 @@
       "tools": ["question"],
       "toolMode": "exclude",
       "skills": ["typst", "math-reasoning", "math-olympiad"],
-      "timeoutMs": 1800000
+      "timeoutMs": 900000
     }
   }
 }

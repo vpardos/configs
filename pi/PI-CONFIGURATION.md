@@ -43,6 +43,14 @@ session, or restart pi.
 - Background lanes (`task ... background: true`) are tracked in an in-memory
   registry (lost on restart — by design) and managed with `check_tasks` /
   `cancel_task`.
+- **Timeouts**: every subagent run has a hard deadline (`timeoutMs` per agent,
+  or the `timeout_ms` argument on the `task` call, clamped to 30s–1h). At the
+  deadline the child gets SIGTERM (SIGKILL after 10s if stuck), and the lead
+  receives the partial stdout + stderr tail in the error. Foreground task
+  progress updates every 5s show elapsed time, the deadline countdown, and
+  any child stderr (e.g. provider errors). Note: print-mode stdout is buffered
+  until the child finishes, so "no output yet" in progress is normal — there
+  is deliberately no inactivity watchdog (it would kill healthy long runs).
 - The `question` tool asks the user a blocking question (bounded options →
   select dialog; otherwise free-form input). It works in interactive and RPC
   modes; in print/JSON mode it errors and tells the agent to proceed with
@@ -57,7 +65,9 @@ session, or restart pi.
 | `/solo` | base agent, no delegation | — | — |
 | `/orchestration` | status: mode, roster, running lanes | — | — |
 
-Default mode: `orchestrator` (set `defaultMode` in orchestration.json).
+Default mode: `orchestrator` (set `defaultMode` in orchestration.json). The env var
+`PI_ORCHESTRATION_MODE=<mode>` overrides the startup mode for one run (also
+handy for scripted sessions; invalid names fall back to "off").
 Mode choice persists per session (custom session entry `orchestration-mode`)
 and survives `/reload` and resume.
 
@@ -125,7 +135,7 @@ running on port 7456.
    | `systemPrompt` | path relative to the extension dir |
    | `tools` + `toolMode` | `allow` → strict `--tools` allowlist; `exclude` → `--exclude-tools`. Use `exclude` when the agent should keep web/MCP tools |
    | `skills` | `["*"]` all, `[]` none (`--no-skills`), or exact names resolved from `~/.agents/skills/<name>` |
-   | `timeoutMs` | child killed with SIGTERM after this (default 600000) |
+   | `timeoutMs` | child killed with SIGTERM (then SIGKILL after 10s) at this deadline; the error returned to the lead includes partial stdout + stderr tail (default 600000; live override via the `task` tool's `timeout_ms` param, clamped to 30s–1h) |
 
 3. **Wire it into a mode**: add `"api-reviewer"` to
    `modes.orchestrator.agents` (or `modes.mathematician.agents`, or a new
@@ -263,6 +273,8 @@ then dispatch a real task in-session.
 | MCP tools missing | `/mcp` shows per-server status; check the command in mcp-servers.json runs manually |
 | `task` says "No orchestration mode is active" | Session started in `/solo`; run `/orchestrator` or `/mathematician` |
 | open-design tools error | Daemon not running on `http://127.0.0.1:7456`; start it and `/reload` |
+| Subagent timed out and was killed | Usually a provider stall (rate limit / network) or an oversized brief. Re-dispatch with a tighter brief, a smaller `timeout_ms`, or `background: true` so the lane cannot block the turn |
+| Subagent "didn't respond" for minutes | Check the progress countdown + child stderr shown while running; if the provider stalls repeatedly for one agent, switch its `model` in orchestration.json to a more reliable one |
 | Background task vanished after restart | In-memory registry by design; re-dispatch |
 
 ## 6. Provenance

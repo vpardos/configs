@@ -57,7 +57,9 @@ const EXT_DIR =
 const SKILLS_DIR = join(homedir(), ".agents", "skills");
 const PI_BIN = process.env.PI_BIN ?? "pi";
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
-const PROGRESS_INTERVAL_MS = 4_000;
+const PROGRESS_INTERVAL_MS = 5_000;
+const MIN_TASK_TIMEOUT_MS = 30_000;
+const MAX_TASK_TIMEOUT_MS = 60 * 60_000;
 
 function readJson<T>(path: string): T {
 	return JSON.parse(readFileSync(path, "utf-8")) as T;
@@ -131,8 +133,7 @@ function spawnSubagent(
 	agent: AgentConfig,
 	brief: string,
 	cwd: string,
-	onProgress?: (tail: string) => void,
-	signal?: AbortSignal,
+	options: { onProgress?: (status: string) => void; signal?: AbortSignal; timeoutMs?: number } = {},
 ): { promise: Promise<ChildResult>; proc: ChildProcess } {
 	const promptText = loadPrompt(agent.systemPrompt);
 	const args = buildChildArgs(agent, promptText);
@@ -155,15 +156,29 @@ function spawnSubagent(
 		stderr = (stderr + chunk).slice(-4000);
 	});
 
-	const timeoutMs = agent.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+	const timeoutMs = Math.min(Math.max(options.timeoutMs ?? agent.timeoutMs ?? DEFAULT_TIMEOUT_MS, MIN_TASK_TIMEOUT_MS), MAX_TASK_TIMEOUT_MS);
 	let timedOut = false;
+	let killTimer: NodeJS.Timeout | undefined;
 	const timer = setTimeout(() => {
 		timedOut = true;
 		proc.kill("SIGTERM");
+		// Hard kill if the child ignores SIGTERM (e.g. stuck in a syscall).
+		killTimer = setTimeout(() => proc.kill("SIGKILL"), 10_000);
 	}, timeoutMs);
 
-	const interval = onProgress
-		? setInterval(() => onProgress(stdoutBuf.slice(-400)), PROGRESS_INTERVAL_MS)
+	const startedAt = Date.now();
+	const interval = options.onProgress
+		? setInterval(
+				() =>
+					options.onProgress?.(
+						`@${agentName} running (${Math.round((Date.now() - startedAt) / 1000)}s, killed in ${Math.round(
+							(timeoutMs - (Date.now() - startedAt)) / 1000,
+						)}s if it never finishes)` +
+							(stdoutBuf ? `\nRecent output:\n${stdoutBuf.slice(-400)}` : "\nNo output yet (normal — the child buffers its reply until done).") +
+							(stderr ? `\nChild stderr:\n${stderr.slice(-400)}` : ""),
+					),
+				PROGRESS_INTERVAL_MS,
+			)
 		: null;
 
 	const promise = new Promise<ChildResult>((resolveP, rejectP) => {
@@ -174,24 +189,38 @@ function spawnSubagent(
 		});
 		proc.on("exit", (code, signal) => {
 			clearTimeout(timer);
+			if (killTimer) clearTimeout(killTimer);
 			if (interval) clearInterval(interval);
 			if (timedOut) {
-				rejectP(new Error(`subagent ${agentName} timed out after ${timeoutMs}ms. Partial stdout:\n${stdout.slice(-4000)}`));
+				rejectP(
+					new Error(
+						`subagent ${agentName} timed out after ${Math.round(timeoutMs / 1000)}s and was killed. ` +
+							`This usually means the provider stalled (rate limit / network) or the brief was too large. ` +
+							`Re-dispatch with a tighter brief, pass a smaller timeout_ms, or run it in background. ` +
+							`Partial stdout:\n${stdout.slice(-4000)}` +
+							(stderr ? `\nStderr tail:\n${stderr.slice(-1500)}` : ""),
+					),
+				);
 				return;
 			}
 			resolveP({ stdout, stderr, code, killed: signal !== null });
 		});
 	});
 
-	if (signal) {
+	if (options.signal) {
 		const onCancel = () => proc.kill("SIGTERM");
-		signal.addEventListener("abort", onCancel, { once: true });
-		proc.on("exit", () => signal.removeEventListener("abort", onCancel));
+		options.signal.addEventListener("abort", onCancel, { once: true });
+		proc.on("exit", () => options.signal!.removeEventListener("abort", onCancel));
 	}
 
 	// The brief goes in via stdin; a short message arg tells pi what to do with it.
 	proc.stdin!.write(brief);
 	proc.stdin!.end();
+
+	// Unhandled-rejection safety net: if the caller disappears before awaiting
+	// (e.g. an exception between spawn and await), a child failure must never
+	// crash the host process. The real consumer still receives the rejection.
+	promise.catch(() => {});
 
 	return { promise, proc };
 }
@@ -206,6 +235,10 @@ export default function (pi: ExtensionAPI) {
 
 	// --- mode state ---------------------------------------------------------
 	let mode: string = config.defaultMode && config.modes[config.defaultMode] ? config.defaultMode : "off";
+	// CLI override: start in a specific mode (also handy for scripted runs/tests), e.g.
+	//   PI_ORCHESTRATION_MODE=mathematician pi
+	const envMode = process.env.PI_ORCHESTRATION_MODE;
+	if (envMode) mode = config.modes[envMode] ? envMode : "off";
 
 	function modeAgentsTable(activeMode: string): string {
 		const modeCfg = config.modes[activeMode];
@@ -319,7 +352,12 @@ export default function (pi: ExtensionAPI) {
 			}),
 			background: Type.Optional(
 				Type.Boolean({
-					description: "Run in the background and return a task id immediately. Collect results with check_tasks.",
+					description: "Run in the background and return a task id immediately. Collect results with check_tasks. Prefer background for research/web lanes (librarian) so a slow or stalled provider cannot block the turn.",
+				}),
+			),
+			timeout_ms: Type.Optional(
+				Type.Number({
+						description: "Optional hard deadline in milliseconds (30s to 1h). The subagent process is killed at the deadline and partial output is returned in the error. Defaults to the agent's configured timeout.",
 				}),
 			),
 		}),
@@ -341,17 +379,11 @@ export default function (pi: ExtensionAPI) {
 			const description = params.prompt.split("\n")[0].slice(0, 80);
 
 			if (!params.background) {
-				const { promise } = spawnSubagent(
-					agentName,
-					agent,
-					params.prompt,
-					ctx.cwd,
-					(tail) =>
-						onUpdate?.({
-							content: [{ type: "text", text: `@${agentName} still working (${Math.round((Date.now() - startedAt) / 1000)}s). Recent output:\n${tail}` }],
-						}),
+				const { promise } = spawnSubagent(agentName, agent, params.prompt, ctx.cwd, {
+					onProgress: (status) => onUpdate?.({ content: [{ type: "text", text: status }] }),
 					signal,
-				);
+					timeoutMs: params.timeout_ms,
+				});
 				const result = await promise;
 				const text = result.stdout.trim();
 				if (!text) {
@@ -377,7 +409,10 @@ export default function (pi: ExtensionAPI) {
 				status: "running",
 			};
 			backgroundTasks.set(id, entry);
-			const { promise, proc } = spawnSubagent(agentName, agent, params.prompt, ctx.cwd, undefined, signal);
+			const { promise, proc } = spawnSubagent(agentName, agent, params.prompt, ctx.cwd, {
+				signal,
+				timeoutMs: params.timeout_ms,
+			});
 			entry.proc = proc;
 			promise
 				.then((result) => {
