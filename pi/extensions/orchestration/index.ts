@@ -22,11 +22,13 @@
  */
 
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, createWriteStream, type WriteStream } from "node:fs";
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 // ---------------------------------------------------------------- config ----
 
@@ -55,10 +57,27 @@ interface OrchestrationConfig {
 	agents: Record<string, AgentConfig>;
 }
 
-const EXT_DIR =
-	process.env.PI_ORCHESTRATION_DIR ?? join(homedir(), ".pi", "agent", "extensions", "orchestration");
+// Resolve the extension's own directory portably: config (orchestration.json,
+// prompts/) always lives next to index.ts, so a repo checkout symlinked into
+// .pi works on any device regardless of where pi keeps its agent dir.
+const HERE = dirname(fileURLToPath(import.meta.url));
+let extDirCache: string | null = null;
+function extDir(): string {
+	if (extDirCache) return extDirCache;
+	const candidates = [
+		process.env.PI_ORCHESTRATION_DIR ?? HERE, // env override or dir of this file
+		join(getAgentDir(), "extensions", "orchestration"),
+		join(homedir(), ".pi", "agent", "extensions", "orchestration"),
+	];
+	for (const c of candidates) {
+		if (existsSync(join(c, "orchestration.json"))) return (extDirCache = c);
+	}
+	return (extDirCache = HERE);
+}
 const SKILLS_DIR = join(homedir(), ".agents", "skills");
-const LOG_DIR = join(homedir(), ".pi", "agent", "subagent-logs");
+function logDir(): string {
+	return join(getAgentDir(), "subagent-logs");
+}
 const PI_BIN = process.env.PI_BIN ?? "pi";
 const DEFAULT_TIMEOUT_MS = 10 * 60_000;
 const PROGRESS_INTERVAL_MS = 5_000;
@@ -71,11 +90,11 @@ function readJson<T>(path: string): T {
 }
 
 function loadConfig(): OrchestrationConfig {
-	return readJson<OrchestrationConfig>(join(EXT_DIR, "orchestration.json"));
+	return readJson<OrchestrationConfig>(join(extDir(), "orchestration.json"));
 }
 
 function loadPrompt(relPath: string): string {
-	const abs = relPath.startsWith("/") ? relPath : join(EXT_DIR, relPath);
+	const abs = relPath.startsWith("/") ? relPath : join(extDir(), relPath);
 	return readFileSync(abs, "utf-8");
 }
 
@@ -208,6 +227,7 @@ function spawnSubagent(
 	});
 
 	// Per-lane transcript: every raw JSON event, tail-able with `tail -f`.
+	const LOG_DIR = logDir();
 	if (!existsSync(LOG_DIR)) mkdirSync(LOG_DIR, { recursive: true });
 	const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
 	laneCounter += 1;

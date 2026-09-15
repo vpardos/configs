@@ -1,0 +1,10 @@
+# Runtime files pi writes into this directory when it is symlinked as the
+# agent dir (~/.pi/agent or ~/.pi). Never commit these — auth.json contains
+# API keys; the rest is machine-local runtime state.
+auth.json
+trust.json
+models-store.json
+npm/
+sessions/
+subagent-logs/
+bin/

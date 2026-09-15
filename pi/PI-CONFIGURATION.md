@@ -297,7 +297,41 @@ then dispatch a real task in-session.
 | Subagent "didn't respond" for minutes | Check the progress countdown + child stderr shown while running; if the provider stalls repeatedly for one agent, switch its `model` in orchestration.json to a more reliable one |
 | Background task vanished after restart | In-memory registry by design; re-dispatch |
 
-## 6. Provenance
+## 6. Multi-device deployment (repo-symlinked config)
+
+The `pi/` directory in the configs repo mirrors pi's agent dir, so on any
+device you can symlink it straight in — whichever layout that device's pi
+uses for its agent dir:
+
+```bash
+ln -s /path/to/configs/pi ~/.pi/agent   # pi keeps its agent dir at ~/.pi/agent
+ln -s /path/to/configs/pi ~/.pi         # pi uses ~/.pi itself as the agent dir
+```
+
+Both work: the extensions resolve their config **relative to the extension
+files themselves** and via `getAgentDir()` — never hardcoded `~/.pi/agent`
+paths (that caused ENOENT failures on a device whose agent dir was `~/.pi`).
+Resolution order for `mcp-servers.json`: `getAgentDir()/mcp-servers.json` →
+extension parent dir → extension dir → legacy `~/.pi/agent/`. For the
+orchestration config: `PI_ORCHESTRATION_DIR` env → directory of `index.ts`
+→ `getAgentDir()/extensions/orchestration` → legacy path.
+
+On a new device you must additionally:
+
+1. **Create `auth.json`** in the agent dir with your API keys — intentionally
+   not in the repo (it is also gitignored, see `pi/.gitignore`).
+2. **Sync `~/.agents/skills/`** — subagents reference `pdf2img`,
+   `math-olympiad`, `math-reasoning`, `typst`, `simplify` by name, and the
+   main agent uses the whole pool.
+3. Packages (`npm:pi-ollama-cloud`) auto-install on first run.
+4. The `hound` binary and the Open Design daemon (`od.mjs … --daemon-url
+   http://127.0.0.1:7456`) must exist for the MCP servers to start.
+
+Runtime files pi writes into the symlinked repo dir (`npm/`, `sessions/`,
+`subagent-logs/`, `bin/`, `auth.json`, `trust.json`, `models-store.json`)
+are gitignored — verify with `git status` after the first run.
+
+## 7. Provenance
 
 Migrated from opencode (`~/.config/opencode/`):
 

@@ -1,7 +1,9 @@
 /**
  * mcp-bridge.ts — Bridge stdio MCP servers into pi as custom tools.
  *
- * Config: ~/.pi/agent/mcp-servers.json
+ * Config: mcp-servers.json — resolved relative to the extension file / agent dir
+ *   (agent dir, extension parent dir, extension dir), so the repo can be symlinked
+ *   into .pi on any device.
  *   { "servers": { "<name>": { "command": [...], "enabled": true, "toolPrefix": "<prefix>" } } }
  *
  * Each MCP tool becomes a pi tool named `<toolPrefix>_<mcpToolName>`
@@ -14,11 +16,13 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { spawn, type ChildProcess } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 interface ServerConfig {
 	command: string[];
@@ -42,8 +46,31 @@ interface McpToolDef {
 const CONNECT_TIMEOUT_MS_DEFAULT = 15_000;
 const CALL_TIMEOUT_MS_DEFAULT = 10 * 60_000;
 
+function findMcpConfigPath(): string | null {
+	// Resolve portably: the config lives next to the extension dir in every
+	// supported layout (agent dir, repo checkout symlinked into .pi, custom -e
+	// load). First existing candidate wins.
+	const here = dirname(fileURLToPath(import.meta.url)); // .../extensions
+	const candidates = [
+		join(getAgentDir(), "mcp-servers.json"),
+		join(here, "..", "mcp-servers.json"), // repo layout: pi/mcp-servers.json next to pi/extensions/
+		join(here, "mcp-servers.json"),
+		join(homedir(), ".pi", "agent", "mcp-servers.json"),
+	];
+	for (const c of candidates) {
+		if (existsSync(c)) return c;
+	}
+	return null;
+}
+
 function loadConfig(): BridgesConfig {
-	const path = join(homedir(), ".pi", "agent", "mcp-servers.json");
+	const path = findMcpConfigPath();
+	if (!path) {
+		console.error(
+			`[mcp-bridge] mcp-servers.json not found (looked in: agent dir, extension dir, extension parent dir, ~/.pi/agent). No MCP servers bridged.`,
+		);
+		return { servers: {} };
+	}
 	try {
 		const raw = JSON.parse(readFileSync(path, "utf-8"));
 		if (raw && typeof raw === "object" && raw.servers) return raw as BridgesConfig;
@@ -299,7 +326,7 @@ export default async function (pi: ExtensionAPI) {
 	pi.registerCommand("mcp", {
 		description: "Show MCP bridge status (servers and bridged tools)",
 		handler: async (_args, ctx) => {
-			const lines = [`MCP servers (config: ~/.pi/agent/mcp-servers.json)`];
+			const lines = [`MCP servers (config: ${findMcpConfigPath() ?? "mcp-servers.json (not found)"})`];
 			for (const [name, status] of statuses) lines.push(`  ${name}: ${status}`);
 			const tools = [...serverOfTool.keys()];
 			if (tools.length) lines.push(`Bridged tools (${tools.length}): ${tools.join(", ")}`);
