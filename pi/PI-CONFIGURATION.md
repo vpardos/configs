@@ -308,24 +308,66 @@ ln -s /path/to/configs/pi ~/.pi/agent   # pi keeps its agent dir at ~/.pi/agent
 ln -s /path/to/configs/pi ~/.pi         # pi uses ~/.pi itself as the agent dir
 ```
 
-Both work: the extensions resolve their config **relative to the extension
-files themselves** and via `getAgentDir()` — never hardcoded `~/.pi/agent`
-paths (that caused ENOENT failures on a device whose agent dir was `~/.pi`).
-Resolution order for `mcp-servers.json`: `getAgentDir()/mcp-servers.json` →
-extension parent dir → extension dir → legacy `~/.pi/agent/`. For the
-orchestration config: `PI_ORCHESTRATION_DIR` env → directory of `index.ts`
-→ `getAgentDir()/extensions/orchestration` → legacy path.
+**IMPORTANT: symlink the whole `pi/` directory.** Do not hand-copy individual
+extension files into `~/.pi/extensions/` — the extensions live next to their
+config (`orchestration.json`, `prompts/`, `mcp-servers.json`), and pi only
+loads what the directory tree contains. A partial copy produces exactly:
+`ENOENT .../orchestration/orchestration.json` and `mcp-servers.json not found`.
+To fix a partial setup (agent dir = `~/.pi`, adjust if yours differs):
+
+```bash
+cd /path/to/configs && git pull
+# 1. preserve the credentials you already created (auth.json lives in the agent dir)
+cp ~/.pi/auth.json /tmp/auth.json
+# 2. remove the hand-made partial tree
+rm -rf ~/.pi
+# 3. symlink the whole repo pi dir as the agent dir
+ln -s "$PWD/pi" ~/.pi
+# 4. put credentials back (auth.json is gitignored in the repo)
+cp /tmp/auth.json /path/to/configs/pi/auth.json
+```
+
+Both layouts work: the extensions resolve their config **relative to the
+extension files themselves** and via `getAgentDir()` — never hardcoded
+`~/.pi/agent` paths. Resolution order for `mcp-servers.json`:
+`getAgentDir()/mcp-servers.json` → extension parent dir → extension dir →
+legacy `~/.pi/agent/`. For the orchestration config: `PI_ORCHESTRATION_DIR`
+env → directory of `index.ts` → `getAgentDir()/extensions/orchestration` →
+legacy path.
 
 On a new device you must additionally:
 
 1. **Create `auth.json`** in the agent dir with your API keys — intentionally
    not in the repo (it is also gitignored, see `pi/.gitignore`).
-2. **Sync `~/.agents/skills/`** — subagents reference `pdf2img`,
-   `math-olympiad`, `math-reasoning`, `typst`, `simplify` by name, and the
-   main agent uses the whole pool.
-3. Packages (`npm:pi-ollama-cloud`) auto-install on first run.
-4. The `hound` binary and the Open Design daemon (`od.mjs … --daemon-url
-   http://127.0.0.1:7456`) must exist for the MCP servers to start.
+2. **Skills**: the whole pool is committed to the repo as `agents-skills/` —
+   sync it with one symlink:
+
+   ```bash
+   mkdir -p ~/.agents
+   rm -rf ~/.agents/skills   # remove any hand-copied partial tree
+   ln -s /path/to/configs/agents-skills ~/.agents/skills
+   ```
+
+   Subagents reference `pdf2img`, `math-olympiad`, `math-reasoning`, `typst`,
+   `simplify` by name. Caveat: the `pdf2img` skill points at
+   `/home/vpardos/pdf2img.py` + its PyMuPDF venv — copy those over too, or
+   reinstall (`pip install pymupdf` and the wrapper) if you need PDF→image
+   conversion on that device.
+3. **hound (MCP web search)**: it is the PyPI package `hound-mcp`:
+
+   ```bash
+   # uv (recommended): https://docs.astral.sh/uv/
+   curl -LsSf https://astral.sh/uv/install.sh | sh   # if uv is missing
+   uv tool install hound-mcp                          # puts `hound` on PATH (~/.local/bin)
+   # or without uv:
+   pip install --user hound-mcp && export PATH="$HOME/.local/bin:$PATH"
+   ```
+
+4. **Open Design MCP**: needs the Open Design repo + daemon on that device
+   (`node /path/to/open-design/apps/daemon/bin/od.mjs mcp --daemon-url
+   http://127.0.0.1:7456`), or set `"enabled": false` for `open-design` in
+   `pi/mcp-servers.json` if you don't need it there.
+5. Packages (`npm:pi-ollama-cloud`) auto-install on first run.
 
 Runtime files pi writes into the symlinked repo dir (`npm/`, `sessions/`,
 `subagent-logs/`, `bin/`, `auth.json`, `trust.json`, `models-store.json`)
