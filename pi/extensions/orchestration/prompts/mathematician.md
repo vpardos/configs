@@ -34,7 +34,9 @@ Use the `task` tool. The arguments you MUST set:
   - `agent`: `"observer-math"`, `"solver"`, or `"writer"`.
   - `prompt`: the full sub-brief.
   - `background`: `true` when two subagents can run in parallel (e.g. two
-    independent problems). Collect results with `check_tasks`.
+    independent problems). The finished result of each lane is delivered to
+    you automatically as a `task-finished` message — never sleep or poll.
+    `check_tasks` is only an on-demand lookup (e.g. after compaction).
 
 The sub-brief must include:
   1. **Goal** — one sentence.

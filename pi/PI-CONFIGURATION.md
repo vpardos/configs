@@ -21,6 +21,7 @@ session, or restart pi.
 | `~/.pi/agent/extensions/orchestration/index.ts` | Orchestration extension: modes, `task`/`check_tasks`/`cancel_task`/`question` tools |
 | `~/.pi/agent/extensions/orchestration/orchestration.json` | Modes + subagent definitions (model, thinking, tools, skills, timeouts, prompts) |
 | `~/.pi/agent/extensions/orchestration/prompts/*.md` | System prompts: 2 lead agents + 9 subagents |
+| `~/.pi/agent/subagent-logs/*.jsonl` | Per-lane raw event transcripts (one per subagent run; `tail -f` to watch live) |
 | `~/.agents/skills/` | Global skill pool used by the main agent and subagents |
 | `~/.pi/agent/npm/` | User-scoped pi packages (pi-ollama-cloud: ollama-cloud provider + `ollama_web_search`/`ollama_web_fetch` tools) |
 
@@ -32,9 +33,26 @@ session, or restart pi.
      lead-agent prompt plus a subagent roster to the *main session's* system
      prompt (via the `before_agent_start` event).
   2. **Child-process subagents** — the `task` tool spawns an isolated
-     `pi --print --no-session` child per dispatch, configured with the
-     subagent's own model, thinking level, tool allowlist, skills, and
-     system prompt. Children do **not** see the parent conversation.
+     `pi --mode json --no-session` child per dispatch, configured with the
+     subagent's own model, thinking level, tool allowlist, skills, and system
+     prompt. Children do **not** see the parent conversation.
+- **Completion notifications (no polling)**: when a background lane finishes,
+  the extension pushes the full result into the session as a
+  `task-finished` message (`pi.sendMessage` with `triggerTurn`). If the lead
+  is mid-turn it is delivered before the next LLM call; if the lead is idle it
+  wakes a new turn automatically. The lead never needs to sleep or poll —
+  `check_tasks` is an on-demand lookup only.
+- **Live visibility** (what subagents are doing/thinking): children stream all
+  events (tool calls, thinking deltas, text deltas) over JSON mode; the parent:
+  - shows a **live widget** (one line per running lane: agent, elapsed, tool
+    calls, current tool or thinking tail) above the editor,
+  - feeds the foreground `task` progress display (updates on every tool call
+    plus a 5s heartbeat, with a deadline countdown),
+  - writes a **per-lane JSONL transcript** to `~/.pi/agent/subagent-logs/`
+    (`tail -f` while a lane runs; `/subagents` lists paths),
+  - enriches `check_tasks` "still running" lines with live activity.
+  Note: print-mode (`pi -p`) parent sessions exit after the turn ends, so
+  notifications/wake-ups only apply to persistent sessions (interactive/RPC).
 - Children run with `PI_ORCHESTRATION_CHILD=1` in their environment. The
   orchestration extension **registers nothing** when it sees that variable,
   so subagents never get `task`/`check_tasks`/`cancel_task`/`question`
@@ -42,7 +60,8 @@ session, or restart pi.
   contract if you touch the extension.
 - Background lanes (`task ... background: true`) are tracked in an in-memory
   registry (lost on restart — by design) and managed with `check_tasks` /
-  `cancel_task`.
+  `cancel_task`. Finished lanes deliver their result automatically as
+  `task-finished` messages that wake the lead.
 - **Timeouts**: every subagent run has a hard deadline (`timeoutMs` per agent,
   or the `timeout_ms` argument on the `task` call, clamped to 30s–1h). At the
   deadline the child gets SIGTERM (SIGKILL after 10s if stuck), and the lead
@@ -63,7 +82,8 @@ session, or restart pi.
 | `/orchestrator` | general coding workflow | `prompts/orchestrator.md` | oracle, librarian, explorer, designer, fixer, observer |
 | `/mathematician` | math pipeline (observer-math → solver → writer) | `prompts/mathematician.md` | observer-math, solver, writer |
 | `/solo` | base agent, no delegation | — | — |
-| `/orchestration` | status: mode, roster, running lanes | — | — |
+| `/orchestration` | status: mode, roster, running lanes | — |
+| `/subagents` | live subagent activity: current tool/thinking per lane + recent transcripts | — | — |
 
 Default mode: `orchestrator` (set `defaultMode` in orchestration.json). The env var
 `PI_ORCHESTRATION_MODE=<mode>` overrides the startup mode for one run (also

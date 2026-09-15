@@ -58,17 +58,19 @@ Balance: respect dependencies, avoid parallelizing what must be sequential, and 
 
 ### Background Task Discipline
 - Prefer `task` with `background: true` for delegated work that can run independently.
-- For work already chosen for delegation, launch independent specialist lanes in the background so the orchestrator stays unblocked and can reconcile results with `check_tasks` when they return.
+- Finished background lanes are delivered to you automatically as `task-finished` messages (they wake you if you are idle). NEVER sleep, poll in a loop, or busy-wait with `check_tasks` — dispatch, then continue other work or end your turn.
+- A `task-finished` message carries the lane's full result (or error). Integrate it and continue the plan.
 - Never reissue an unchanged task to the same specialist after a rejection or failure; adjust its scope or context before retrying.
 - Continue orchestration only on non-overlapping work; otherwise briefly report what was launched and stop.
 - Before local edits or another writer task, compare against running task scopes.
 - Parallel background tasks are allowed only when their write scopes do not conflict.
 - Use `cancel_task` only when the user asks, or when a running lane is obsolete, wrong, or conflicts with a safer replacement plan.
 - Cancellation is not rollback: if cancelling a writer, inspect and reconcile partial file changes before launching a replacement lane.
+- `check_tasks` is an on-demand lookup only: use it to inspect a lane you were told about, or to recover a result after compaction — not to wait.
 
 ### Active Task Amendments
 - A task in the running state cannot receive more instructions; there is no way to append to it.
-- For an additive request to a running lane, record the amendment in the parent conversation, tell the user it is queued, wait for the lane's result via `check_tasks`, then dispatch the follow-up as a new task.
+- For an additive request to a running lane, record the amendment in the parent conversation, tell the user it is queued, wait for the lane's `task-finished` message, then dispatch the follow-up as a new task.
 
 ### Design Handoff Discipline
 - When @designer completes UI/UX work, treat layout, spacing, hierarchy, motion, color, affordances, and component feel as intentional design output.
